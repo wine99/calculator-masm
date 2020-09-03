@@ -59,10 +59,23 @@ org  1000h
     operator_stack          db '#', 100 dup(?)      ; si
     operand_stack           dw 0ffffh, 100 dup(?)   ; di
 
+    priority                db 0    ; 0 栈顶<下一个; 1 =; 2 >
     current_num             dw 0
     result                  dw 0
     led_overflow            db 0
     error                   db 0
+
+    ;   # ( + - *
+    ; # f f f f f
+    ; ( f f f f f
+    ; + 2 2 1 1 0
+    ; - 2 2 1 1 0
+    ; * 2 2 2 2 1
+    priority_table  db  0ffh, 0ffh, 0ffh, 0ffh, 0ffh
+                    db  0ffh, 0ffh, 0ffh, 0ffh, 0ffh
+                    db  2, 2, 1, 1, 0
+                    db  2, 2, 1, 1, 0
+                    db  2, 2, 2, 2, 1
 
     OUTSEG  equ  0ffdch             ;段控制口
     OUTBIT  equ  0ffddh             ;位控制口/键扫口
@@ -96,17 +109,7 @@ init_all proc
         call init8259
         call init8255
         call init8253
-        call init_stack
-        call clean_led
-        mov previous_key, 20h
-        mov current_key, 20h
-        mov led_count, 0
-        mov has_previous_bracket, 0
-        mov same_as_pre, 0
-        mov current_num, 0
-        mov result, 0
-        mov led_overflow, 0
-        mov error, 0
+        call clean_all
         ret
 init_all endp
 
@@ -137,7 +140,7 @@ init8255 proc
         mov dx, port55_ctrl
         mov al, 88H
         out dx, al
-        mov al, lightOff
+        mov al, lightOff    ; TODO
         mov dx, port55_a
         out dx, al
         pop dx
@@ -166,6 +169,17 @@ init_stack endp
 
 clean_all proc
         call init_stack
+        call clean_led
+        mov previous_key, 20h
+        mov current_key, 20h
+        mov led_count, 0
+        mov has_previous_bracket, 0
+        mov same_as_pre, 0
+        mov current_num, 0
+        mov result, 0
+        mov led_overflow, 0
+        mov is_save_num, 0
+        mov error, 0
 clean_all endp
 
 
@@ -389,12 +403,77 @@ handle_f endp
 
 
 cal_one_op proc
+        push ax
+        push dx
+        cmp si, 1
+        jb cal_error
+        cmp di, 4
+        jb cal_error
+        mov ax, operand_stack[di - 2]
+        mov dl, operator_stack[si]
 
+        cmp dl, 0ah                 ; +
+        jne cal_not_plus
+        add ax, operand_stack[di]
+        jo cal_overflow             ; 加法溢出为overflow
+        jmp cal_ret
+    cal_not_plus:
+        cmp dl, 0bh                 ; -
+        jne cal_not_minus
+        sub ax, operand_stack[di]
+        js cal_overflow             ; 减法得负也为overflow
+        jmp cal_ret
+    cal_not_minus:
+        cmp dl, 0ch                 ; *
+        jne cal_error               ; 不是 + - * 为error
+        mul ax, operand_stack[di]
+        cmp dx, 0
+        jne cal_overflow            ; 乘法溢出为overflow
+        jmp cal_ret
+    cal_error:
+        mov error, 1
+        jmp cal_ret
+    cal_overflow:
+        mov led_overflow, 1
+    cal_ret:
+        sub di, 2
+        dec si
+        mov operand_stack[di], ax
+        pop dx
+        pop ax
+        ret
 cal_one_op endp
 
 
-push_stack proc
-push_stack endp
+get_priority proc
+    ; 栈顶是(或者#则为error，因为handle_key逻辑不会做出这样的行为
+        push ax
+        push dx
+        mov al, operator_stack[si]
+        mov dl, current_key
+        cmp al, '#'
+        je get_priority_error
+        cmp al, 0dh
+        je get_priority_error
+        sub al, 0ah
+        add al, 2
+        sub dl, 0ah
+        add dl, 2
+        mov dh, 5           ; 5 x 5 的优先表
+        mul dh
+        add al, dl
+        mov ah, 0
+        dec ax
+        mov dx, priority_table[ax]
+        mov priority, dx
+        jmp get_priority_ret
+    get_priority_error:
+        mov error, 1
+    get_priority_ret:
+        pop dx
+        pop ax
+        ret
+get_priority endp
 
 
 set_led_num proc
