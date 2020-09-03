@@ -59,6 +59,7 @@ org  1000h
     operator_stack          db '#', 100 dup(?)      ; si
     operand_stack           dw 0ffffh, 100 dup(?)   ; di
 
+    is_save_num             db 0    ;当按下一个运算符时，current_num是否已经保存
     current_num             dw 0
     display_num             dw 0
     result                  dw 0
@@ -343,6 +344,7 @@ handle_number proc
     push ax
     push bx
     push dx
+    mov is_save_num, 0           ;输入新的数字时，设置成当前数字还未保存
     cmp led_count, 4
     jae handle_number_ret
     mov ax, current_num
@@ -373,26 +375,82 @@ handle_error endp
 
 handle_a proc
     ;处理输入的是a(加号)的情况
-    mov led_count, 0
+    cmp is_save_num, 0
+    jne calculate_a
+    mov is_save_num, 1
     inc di
     mov operand_stack[di], current_num    ;将current_num入栈
-    
-
+    mov led_count, 0
+    mov current_num, 0                    ;按下运算符时，数字输入结束，将当前的数字清空
+    calculate_a:
+    cmp error, 1
+    je a_ret                              ;当前面的式子已经计算出错的时候后面的式子不需要计算了
+    call get_priority
+    cmp priority, 0
+    je push_a                             ;当前符号优先级大于栈顶符号，直接入栈
+    call cal_one_op                       ;否则计算一次
+    jmp calculate_a
+    push_a:
+    inc si
+    mov operator_stack[si], current_key   ;将当前运算符入栈
+    a_ret:
+    ret
 handle_a endp
 
 handle_b proc
+    call handle_a
+    ret
 handle_b endp
 
 handle_c proc
+    call handle_a
+    ret
 handle_c endp
 
 handle_d proc
+    cmp has_previous_bracket, 0
+    je no_previous
+    mov has_previous_bracket, 0
+    cal_between_bracket:
+    cmp operator_stack[si], 0dh
+    je is_left_bracket
+    call cal_one_op
+    jmp cal_between_bracket
+    is_left_bracket:
+    dec si
+    jmp ret_d
+    no_previous:
+    mov has_previous_bracket, 1
+    inc si
+    mov operator_stack[si], current_key
+    ret_d:
+    ret
 handle_d endp
 
 handle_e proc
+    push ax
+    cal_e:
+    cmp error, 1
+    je ret_e
+    cmp operator_stack[si], '#'
+    je ret_e
+    call cal_one_op
+    jmp cal_e
+    ret_e:
+    cmp error, 1
+    je show_error
+    mov ax, operand_stack[di]
+    mov display_num, ax
+    call set_led_num
+    show_error:
+    TODO                                ;结果显示
+    pop ax
+    ret
 handle_e endp
 
 handle_f proc
+    call init_all
+    ret
 handle_f endp
 
 
