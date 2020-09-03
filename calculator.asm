@@ -56,8 +56,8 @@ org  1000h
     has_previous_bracket    db 0
     same_as_pre             db 0
 
-    operand_stack           db 0ffh, 100 dup(?)     ; si
-    operator_stack          dw 0ffffh, 100 dup(?)   ; di
+    operator_stack          db '#', 100 dup(?)      ; si
+    operand_stack           dw 0ffffh, 100 dup(?)   ; di
 
     current_num             dw 0
     display_num             dw 0
@@ -99,6 +99,15 @@ init_all proc
         call init8253
         call init_stack
         call clean_led
+        mov previous_key, 20h
+        mov current_key, 20h
+        mov led_count, 0
+        mov has_previous_bracket, 0
+        mov same_as_pre, 0
+        mov current_num, 0
+        mov result, 0
+        mov led_overflow, 0
+        mov error, 0
         ret
 init_all endp
 
@@ -346,6 +355,7 @@ handle_number proc
     inc led_count
     mov display_num, current_num
     handle_number_ret:
+    call set_led_num
     pop dx
     pop bx
     pop ax
@@ -393,6 +403,43 @@ cal_one_op endp
 
 push_stack proc
 push_stack endp
+
+
+set_led_num proc
+    ; 只在handle_number里面调用，
+    ; 此时led_count = 已输入的数字位数
+    ; led_count - 1 = 已显示的数字位数
+        push ax
+        push bx
+        push dx
+        push di
+        mov di, 3
+        mov ax, current_number
+        mov dx, 0
+    ax_not_zero:
+        mov dx, 0
+        mov bx, 10
+        div bx
+        mov bl, ledmap[dx]
+        mov ledbuf[di], bl
+        dec di
+        cmp ax, 0
+        jne ax_not_zero
+    fill_empty:
+        cmp di, 0    
+        jb set_led_num_ret
+        mov ledbuf[di], 0ffh
+        dec di
+        jmp fill_empty
+    set_led_num_ret:
+        pop di
+        pop dx
+        pop bx
+        pop ax
+        ret
+set_led_num endp
+
+
 
 disp proc
         mov  bx,offset LEDBuf
