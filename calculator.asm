@@ -34,7 +34,7 @@ org  1000h
     icw1        equ 13H         ; 边沿触发
     icw2        equ 08h         ; 中断类型号 08H 09H ...
     icw4        equ 09h         ; 全嵌套，非缓冲，非自动EOI，8086/88模式
-    ocw1open    equ 07fh        ; IRQ7，类型号为0fh，向量地址偏移地址3ch，段地址0，参考示例第13行
+    ocw1open    equ 07fh        ; IRQ7，类型号为0fh，向量地址偏移地址3ch，段地址0，参考示例第13行 
     ocw1down    equ 0ffh
 
     ; 并行接口芯片 8255
@@ -51,6 +51,7 @@ org  1000h
 
     led_status              db 6 dup(?)
     led_count               db 0
+    previous_key            db 20h
     current_key             db 20h
     has_previous_bracket    db 0
     same_as_pre             db 0
@@ -168,6 +169,10 @@ get_key proc                    ;键扫子程序
         push bx
         push cx
         push dx
+
+        mov al, current_key     ;上一次扫描的符号
+        mov previous_key, al
+
         mov  al,0ffh            ;关显示口
         mov  dx,OUTSEG
         out  dx,al
@@ -197,6 +202,11 @@ get_key proc                    ;键扫子程序
         loop key1
     nkey:   
         mov  al,20h
+        mov current_key, al
+        pop dx
+        pop cx
+        pop bx
+        pop ax
         ret
     key2:   
         test al,1
@@ -224,7 +234,6 @@ get_key proc                    ;键扫子程序
         mov  bx,offset KeyTable
         xlat
     fkey:   
-        and al, 0fh
         mov current_key, al
         pop dx
         pop cx
@@ -276,7 +285,20 @@ handle_key proc
         ret
 handle_key endp
 
-
+is_same_as_pre proc
+    ;给same_as_pre赋值
+    push ax
+    mov al, current_key
+    cmp al, previous_key
+    je is_same
+    mov same_as_pre, 0
+    jmp return
+is_same: 
+    mov same_as_pre, 1
+return:    
+    pop ax
+    ret
+is_same_as_pre endp
 
 
 
