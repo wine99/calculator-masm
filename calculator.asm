@@ -60,6 +60,7 @@ org  1000h
     operator_stack          dw 0ffffh, 100 dup(?)   ; di
 
     current_num             dw 0
+    display_num             dw 0
     result                  dw 0
     led_overflow            db 0
     error                   db 0
@@ -343,6 +344,7 @@ handle_number proc
     add ax, bx               
     mov current_num, ax          ;current_num = current_num * 10 + current_key
     inc led_count
+    mov display_num, current_num
     handle_number_ret:
     pop dx
     pop bx
@@ -360,6 +362,12 @@ handle_error proc
 handle_error endp
 
 handle_a proc
+    ;处理输入的是a(加号)的情况
+    mov led_count, 0
+    inc di
+    mov operand_stack[di], current_num    ;将current_num入栈
+    
+
 handle_a endp
 
 handle_b proc
