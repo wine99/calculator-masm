@@ -27,54 +27,54 @@ code    segment
 
 org  1000h
 
-; 中断控制器 8259
-; 8259只处理来自8253的计时中断
-port59_0    equ 0ffe4h
-port59_1    equ 0ffe5h
-icw1        equ 13H         ; 边沿触发
-icw2        equ 08h         ; 中断类型号 08H 09H ...
-icw4        equ 09h         ; 全嵌套，非缓冲，非自动EOI，8086/88模式
-ocw1open    equ 07fh        ; IRQ7，类型号为0fh，向量地址偏移地址3ch，段地址0，参考示例第13行
-ocw1down    equ 0ffh
+    ; 中断控制器 8259
+    ; 8259只处理来自8253的计时中断
+    port59_0    equ 0ffe4h
+    port59_1    equ 0ffe5h
+    icw1        equ 13H         ; 边沿触发
+    icw2        equ 08h         ; 中断类型号 08H 09H ...
+    icw4        equ 09h         ; 全嵌套，非缓冲，非自动EOI，8086/88模式
+    ocw1open    equ 07fh        ; IRQ7，类型号为0fh，向量地址偏移地址3ch，段地址0，参考示例第13行
+    ocw1down    equ 0ffh
 
-; 并行接口芯片 8255
-; 8255向led灯输出led状态
-port55_a    equ 0ffd8H
-port55_ctrl equ 0ffdBH
+    ; 并行接口芯片 8255
+    ; 8255向led灯输出led状态
+    port55_a    equ 0ffd8H
+    port55_ctrl equ 0ffdBH
 
-; 计数定时芯片 8253
-port53_0    equ 0ffe0H
-port53_ctrl equ 0ffe3H      ; 控制口
-count_1sec  equ 19200       ; 1s计数次数
-count_2sec  equ 38400       ; 2s计数次数
+    ; 计数定时芯片 8253
+    port53_0    equ 0ffe0H
+    port53_ctrl equ 0ffe3H      ; 控制口
+    count_1sec  equ 19200       ; 1s计数次数
+    count_2sec  equ 38400       ; 2s计数次数
 
 
-led_status              db 6 dup(?)
-led_count               db 0
-current_key             db 20h
-has_previous_bracket    db 0
-same_as_pre             db 0
+    led_status              db 6 dup(?)
+    led_count               db 0
+    current_key             db 20h
+    has_previous_bracket    db 0
+    same_as_pre             db 0
 
-operand_stack_base      db ? ;TODO
-operator_stack_base     db ? ;TODO
-operand_stack_ptr       db ? ;TODO
-operator_stack_ptr      db ? ;TODO
-operator_stack_top      db ?
-operator_next           db '#'
+    operand_stack_base      db ? ;TODO
+    operator_stack_base     db ? ;TODO
+    operand_stack_ptr       db ? ;TODO
+    operator_stack_ptr      db ? ;TODO
+    operator_stack_top      db ?
+    operator_next           db '#'
 
-result                  db 0
-led_overflow            db 0
-error                   db 0
+    result                  db 0
+    led_overflow            db 0
+    error                   db 0
 
-OUTSEG  equ  0ffdch             ;段控制口
-OUTBIT  equ  0ffddh             ;位控制口/键扫口
-IN_KEY  equ  0ffdeh             ;键盘读入口
-;八段管显示码
-LedMap  db   0c0h,0f9h,0a4h,0b0h,099h,092h,082h,0f8h
-        db   080h,090h,088h,083h,0c6h,0a1h,086h,08eh
-;键码定义
-KeyTable db   07h,04h,08h,05h,09h,06h,0ah,0bh
-         db   01h,00h,02h,0fh,03h,0eh,0ch,0dh
+    OUTSEG  equ  0ffdch             ;段控制口
+    OUTBIT  equ  0ffddh             ;位控制口/键扫口
+    IN_KEY  equ  0ffdeh             ;键盘读入口
+    ;八段管显示码
+    LedMap  db   0c0h,0f9h,0a4h,0b0h,099h,092h,082h,0f8h
+            db   080h,090h,088h,083h,0c6h,0a1h,086h,08eh
+    ;键码定义
+    KeyTable db   07h,04h,08h,05h,09h,06h,0ah,0bh
+            db   01h,00h,02h,0fh,03h,0eh,0ch,0dh
 
 
 ; start
