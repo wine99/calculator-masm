@@ -396,8 +396,16 @@ push_stack proc
 push_stack endp
 
 
-move_num_left proc
+set_led_num proc
         push ax
+        cmp led_count, 0
+        jne move_num_left
+        mov LedBuf+0,0ffh
+        mov LedBuf+1,0ffh
+        mov LedBuf+2,0ffh
+        mov al, current_key
+        mov LedBuf+3, al
+    move_num_left:
         mov al, LedBuf+1
         mov LedBuf+0, al
         mov al, LedBuf+2
@@ -407,7 +415,10 @@ move_num_left proc
         mov al, current_key
         mov LedBuf+3, al
         pop ax
-move_num_left endp
+set_led_num endp
+
+
+
 
 
 disp proc
