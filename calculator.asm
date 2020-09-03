@@ -94,6 +94,15 @@ init_all proc
         call init8253
         call init_stack
         call clean_led
+        mov previous_key, 20h
+        mov current_key, 20h
+        mov led_count, 0
+        mov has_previous_bracket, 0
+        mov same_as_pre, 0
+        mov current_num, 0
+        mov result, 0
+        mov led_overflow, 0
+        mov error, 0
         ret
 init_all endp
 
@@ -339,6 +348,21 @@ cal_one_op endp
 
 push_stack proc
 push_stack endp
+
+
+move_num_left proc
+        push ax
+        mov al, LedBuf+1
+        mov LedBuf+0, al
+        mov al, LedBuf+2
+        mov LedBuf+1, al
+        mov al, LedBuf+3
+        mov LedBuf+2, al
+        mov al, current_key
+        mov LedBuf+3, al
+        pop ax
+move_num_left endp
+
 
 disp proc
         mov  bx,offset LEDBuf
