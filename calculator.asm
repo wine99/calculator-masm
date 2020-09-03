@@ -49,20 +49,18 @@ org  1000h
     count_2sec  equ 38400       ; 2s计数次数
 
 
-    led_status              db 6 dup(?)
+    ledbuf                  db 6 dup(?)
     led_count               db 0
     previous_key            db 20h
     current_key             db 20h
     has_previous_bracket    db 0
     same_as_pre             db 0
 
-    operand_stack           db 0ffh, 100 dup(?)
-    operator_stack          dw 0ffffh, 100 dup(?)
-    operator_stack_top      db ?    ; TODO 是否需要
-    operator_next           db '#'  ; TODO 是否需要
+    operand_stack           db 0ffh, 100 dup(?)     ; si
+    operator_stack          dw 0ffffh, 100 dup(?)   ; di
 
     current_num             dw 0
-    result                  db 0
+    result                  dw 0
     led_overflow            db 0
     error                   db 0
 
@@ -77,13 +75,14 @@ org  1000h
             db   01h,00h,02h,0fh,03h,0eh,0ch,0dh
 
 
-; start
+start:
     cli
     call init_all
 main:
     sti
     call get_key
     call handle_key
+    call disp
     jmp main
 ; end
 
@@ -147,8 +146,8 @@ init8253 endp
 
 
 init_stack proc
-        ; TODO init operand stack
-        ; TODO init operator stack
+        mov si, 0
+        mov di, 0
 init_stack endp
 
 
@@ -158,7 +157,12 @@ clean_all endp
 
 
 clean_led proc
-        ; TODO 最后一位显示0，其余不显示
+        mov  LedBuf+0,0ffh
+        mov  LedBuf+1,0ffh
+        mov  LedBuf+2,0ffh
+        mov  LedBuf+3,0c0h
+        mov  LedBuf+4,0ffh
+        mov  LedBuf+6,0ffh
 clean_led endp
 
 
@@ -246,7 +250,6 @@ handle_key proc
         call is_same_as_pre
         cmp same_as_pre, 1
         jne handle_key_continue
-        call do_nothing ; TODO
         ret
     handle_key_continue:
         cmp al, 10
@@ -305,8 +308,6 @@ handle_number proc
     ; 如果 led_count < 4
     ;   current_num = current_num * 10 + current_key
     ;   led_count += 1
-    ; 否则
-    ;   call do_nothing
 handle_number endp
 
 handle_error proc
@@ -338,3 +339,46 @@ cal_one_op endp
 
 push_stack proc
 push_stack endp
+
+disp proc
+        mov  bx,offset LEDBuf
+        mov  cl,6               ;共6个八段管
+        mov  ah,00100000b       ;从左边开始显示
+    DLoop:
+        mov  dx,OUTBIT
+        mov  al,0
+        out  dx,al              ;关所有八段管
+        mov  al,[bx]
+        mov  dx,OUTSEG
+        out  dx,al
+
+        mov  dx,OUTBIT
+        mov  al,ah
+        out  dx,al              ;显示一位八段管
+
+        push ax
+        mov  ah,1
+        call Delay
+        pop  ax
+
+        shr  ah,1
+        inc  bx
+        dec  cl
+        jnz  DLoop
+
+        mov  dx,OUTBIT
+        mov  al,0
+        out  dx,al              ;关所有八段管
+        ret
+disp endp
+
+delay proc                         ;延时子程序
+        push  cx
+        mov   cx,256
+        loop  $
+        pop   cx
+        ret
+delay endp
+
+code    ends
+        end start
