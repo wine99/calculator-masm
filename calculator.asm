@@ -35,7 +35,7 @@ org  1000h
     icw2        equ 08h         ; 中断类型号 08H 09H ...
     icw4        equ 09h         ; 全嵌套，非缓冲，非自动EOI，8086/88模式
     ocw1open    equ 07fh        ; IRQ7，类型号为0fh，向量地址偏移地址3ch，段地址0，参考示例第13行
-    ocw1down    equ 0ffh
+    ocw1down    equ 0ffh        ; TODO 是否需要
 
     ; 并行接口芯片 8255
     ; 8255向led灯输出led状态
@@ -55,13 +55,12 @@ org  1000h
     has_previous_bracket    db 0
     same_as_pre             db 0
 
-    operand_stack_base      db ? ;TODO
-    operator_stack_base     db ? ;TODO
-    operand_stack_ptr       db ? ;TODO
-    operator_stack_ptr      db ? ;TODO
-    operator_stack_top      db ?
-    operator_next           db '#'
+    operand_stack           db 0ffh, 100 dup(?)
+    operator_stack          dw 0ffffh, 100 dup(?)
+    operator_stack_top      db ?    ; TODO 是否需要
+    operator_next           db '#'  ; TODO 是否需要
 
+    current_num             dw 0
     result                  db 0
     led_overflow            db 0
     error                   db 0
@@ -111,7 +110,7 @@ init8259 proc
         out dx, al
         mov al, icw4
         out dx, al
-        mov al, ocw1down
+        mov al, ocw1open
         out dx, al
         pop dx
         pop ax
@@ -277,10 +276,16 @@ handle_key proc
 handle_key endp
 
 
-
+is_same_as_pre proc
+is_same_as_pre endp
 
 
 handle_number proc
+    ; 如果 led_count < 4
+    ;   current_num = current_num * 10 + current_key
+    ;   led_count += 1
+    ; 否则
+    ;   call do_nothing
 handle_number endp
 
 handle_error proc
@@ -303,3 +308,12 @@ handle_e endp
 
 handle_f proc
 handle_f endp
+
+
+cal_one_op proc
+
+cal_one_op endp
+
+
+push_stack proc
+push_stack endp
