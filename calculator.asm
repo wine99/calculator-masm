@@ -83,6 +83,10 @@ org  1000h
 main:
     sti
     call get_key
+    cmp current_key, 20h
+    je handle
+    and  al,0fh
+    handle:
     call handle_key
     jmp main
 ; end
@@ -243,44 +247,59 @@ get_key endp
 
 
 handle_key proc
+        push ax
         call is_same_as_pre
+        mov al, current_key
         cmp same_as_pre, 1
         jne handle_key_continue
         call do_nothing ; TODO
+        pop ax
         ret
     handle_key_continue:
         cmp al, 10
         jnb handle_key_a
         call handle_number
+        pop ax
         ret
     handle_key_a:
         cmp al, 0ah
         jne handle_key_b
         call handle_a
+        pop ax
         ret
     handle_key_b:
         cmp al, 0bh
         jne handle_key_c
         call handle_b
+        pop ax
         ret
     handle_key_c:
         cmp al, 0ch
         jne handle_key_d
         call handle_c
+        pop ax
         ret
     handle_key_d:
         cmp al, 0dh
         jne handle_key_e
         call handle_d
+        pop ax
         ret
     handle_key_e:
         cmp al, 0eh
         jne handle_key_f
-        call handle_a
+        call handle_e
+        pop ax
         ret
     handle_key_f:
         cmp al, 0fh
+        jne key_error
+        call handle_f
+        jmp handle_key_f_ret
+        key_error:
         call handle_error
+        handle_key_f_ret:
+        pop ax
         ret
 handle_key endp
 
@@ -307,9 +326,34 @@ handle_number proc
     ;   led_count += 1
     ; 否则
     ;   call do_nothing
+    ; 当输入数字以外的符号的时候需要把led_count清空
+    push ax
+    push bx
+    push dx
+    cmp led_count, 4
+    jae handle_number_ret
+    mov ax, current_num
+    mov bx, 10
+    mul bx
+    mov bl, current_key
+    mov bh, 0
+    add ax, bx               
+    mov current_num, ax          ;current_num = current_num * 10 + current_key
+    inc led_count
+    handle_number_ret:
+    pop dx
+    pop bx
+    pop ax
+    ret
 handle_number endp
 
 handle_error proc
+    ;处理get_key得到的字符不是数字和符号的情况，包含current_key=20h
+    cmp current_key, 20h
+    je handle_error_ret
+    TODO ;处理其它的符号
+    handle_error_ret:
+    ret
 handle_error endp
 
 handle_a proc
