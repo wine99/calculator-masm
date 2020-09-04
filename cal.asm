@@ -527,9 +527,9 @@ get_priority proc
         mov al, operator_stack[si]
         mov dl, current_key
         cmp al, '#'
-        je gete
+        je get_priority_err
         cmp al, 0dh
-        je gete
+        je get_priority_err
         sub al, 0ah
         add al, 2
         sub dl, 0ah
@@ -538,12 +538,12 @@ get_priority proc
         mul dh
         add al, dl
         mov ah, 0
-        dec ax
+        ; dec ax            ; ²»ÐèÒª¼õ1
         mov bx, ax
         mov dl, priority_table[bx]
         mov priority, dl
         jmp get_priority_ret
-    gete:
+    get_priority_err:
         mov whole_error, 1
     get_priority_ret:
         pop dx
