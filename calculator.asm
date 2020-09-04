@@ -94,12 +94,13 @@ start:
     call init_all
 main:
     sti
-    call get_key
-    cmp current_key, 20h
-    je handle
-    and  al,0fh
-    handle:
-    call handle_key
+    ;call get_key
+    ;cmp current_key, 20h
+    ;je handle
+    ;and  al,0fh
+    ;handle:
+    ;call handle_key
+    call set_led_num
     call disp
     jmp main
 ; end
@@ -141,7 +142,7 @@ init8255 proc
         mov dx, port55_ctrl
         mov al, 88H
         out dx, al
-        mov al, lightOff    ; TODO
+        ;mov al, lightOff    ; TODO
         mov dx, port55_a
         out dx, al
         pop dx
@@ -165,6 +166,7 @@ init8253 endp
 init_stack proc
         mov si, 0
         mov di, 0
+        ret
 init_stack endp
 
 
@@ -181,6 +183,7 @@ clean_all proc
         mov led_overflow, 0
         mov is_save_num, 0
         mov error, 0
+        ret
 clean_all endp
 
 
@@ -190,7 +193,8 @@ clean_led proc
         mov  LedBuf+2,0ffh
         mov  LedBuf+3,0c0h
         mov  LedBuf+4,0ffh
-        mov  LedBuf+6,0ffh
+        mov  LedBuf+5,0ffh
+        ret
 clean_led endp
 
 
@@ -359,7 +363,7 @@ handle_number proc
     push dx
     mov is_save_num, 0           ;输入新的数字时，设置成当前数字还未保存
     cmp led_count, 4
-    jae handle_number_ret
+    jae handle_number_ret        ; TODO euqal
     mov ax, current_num
     mov bx, 10
     mul bx
@@ -368,9 +372,11 @@ handle_number proc
     add ax, bx               
     mov current_num, ax          ;current_num = current_num * 10 + current_key
     inc led_count
-    mov display_num, current_num
+    push ax
+    mov ax, current_num
+    mov display_num, ax
+    pop ax
     handle_number_ret:
-    call set_led_num
     pop dx
     pop bx
     pop ax
@@ -381,7 +387,7 @@ handle_error proc
     ;处理get_key得到的字符不是数字和符号的情况，包含current_key=20h
     cmp current_key, 20h
     je handle_error_ret
-    TODO ;处理其它的符号
+    ;TODO ;处理其它的符号
     handle_error_ret:
     ret
 handle_error endp
@@ -392,7 +398,10 @@ handle_a proc
     jne calculate_a
     mov is_save_num, 1
     inc di
-    mov operand_stack[di], current_num    ;将current_num入栈
+    push ax
+    mov ax, current_num
+    mov operand_stack[di], ax           ;将current_num入栈
+    pop ax
     mov led_count, 0
     mov current_num, 0                    ;按下运算符时，数字输入结束，将当前的数字清空
     calculate_a:
@@ -405,7 +414,10 @@ handle_a proc
     jmp calculate_a
     push_a:
     inc si
-    mov operator_stack[si], current_key   ;将当前运算符入栈
+    push ax
+    mov al, current_key
+    mov operator_stack[si], al          ;将当前运算符入栈
+    pop ax
     a_ret:
     ret
 handle_a endp
@@ -435,7 +447,10 @@ handle_d proc
     no_previous:
     mov has_previous_bracket, 1
     inc si
-    mov operator_stack[si], current_key
+    push ax
+    mov al, current_key
+    mov operator_stack[si], al
+    pop ax
     ret_d:
     ret
 handle_d endp
@@ -456,7 +471,7 @@ handle_e proc
     mov display_num, ax
     call set_led_num
     show_error:
-    TODO                                ;结果显示
+    ;TODO                                ;结果显示
     pop ax
     ret
 handle_e endp
@@ -491,7 +506,7 @@ cal_one_op proc
     cal_not_minus:
         cmp dl, 0ch                 ; *
         jne cal_error               ; 不是 + - * 为error
-        mul ax, operand_stack[di]
+        mul operand_stack[di]
         cmp dx, 0
         jne cal_overflow            ; 乘法溢出为overflow
         jmp cal_ret
@@ -513,6 +528,7 @@ cal_one_op endp
 get_priority proc
     ; 栈顶是(或者#则为error，因为handle_key逻辑不会做出这样的行为
         push ax
+        push bx
         push dx
         mov al, operator_stack[si]
         mov dl, current_key
@@ -529,13 +545,15 @@ get_priority proc
         add al, dl
         mov ah, 0
         dec ax
-        mov dx, priority_table[ax]
-        mov priority, dx
+        mov bx, ax
+        mov dl, priority_table[bx]
+        mov priority, dl
         jmp get_priority_ret
     get_priority_error:
         mov error, 1
     get_priority_ret:
         pop dx
+        pop bx
         pop ax
         ret
 get_priority endp
@@ -549,24 +567,24 @@ set_led_num proc
         push bx
         push dx
         push di
+        mov  LedBuf+0,0ffh
+        mov  LedBuf+1,0ffh
+        mov  LedBuf+2,0ffh
+        mov  LedBuf+3,0ffh
         mov di, 3
-        mov ax, current_number
-        mov dx, 0
+        mov ax, display_num
     ax_not_zero:
         mov dx, 0
         mov bx, 10
         div bx
-        mov bl, ledmap[dx]
+        push bx
+        mov bx, dx
+        mov bl, ledmap[bx]
+        pop bx
         mov ledbuf[di], bl
         dec di
         cmp ax, 0
         jne ax_not_zero
-    fill_empty:
-        cmp di, 0    
-        jb set_led_num_ret
-        mov ledbuf[di], 0ffh
-        dec di
-        jmp fill_empty
     set_led_num_ret:
         pop di
         pop dx
