@@ -95,7 +95,7 @@ main:
     and  al,0fh
     handle:
     call handle_key
-    ; call set_led_num
+    ;call set_led_num
     call disp
     jmp main
 ; end
@@ -393,20 +393,23 @@ handle_a proc
     cmp is_save_num, 0
     jne calculate_a
     mov is_save_num, 1
+    
     inc di
+    inc di                              ;TODO  di自增应该加二，但这里的di第一次执行是1
     push ax
     mov ax, current_num
     mov operand_stack[di], ax           ;将current_num入栈
+    
     pop ax
     mov led_count, 0
-    mov current_num, 0                    ;按下运算符时，数字输入结束，将当前的数字清空
+    mov current_num, 0                  ;按下运算符时，数字输入结束，将当前的数字清空
     calculate_a:
     cmp whole_error, 1
-    je a_ret                              ;当前面的式子已经计算出错的时候后面的式子不需要计算了
+    je a_ret                            ;当前面的式子已经计算出错的时候后面的式子不需要计算了
     call get_priority
     cmp priority, 0
-    je push_a                             ;当前符号优先级大于栈顶符号，直接入栈
-    call cal_one_op                       ;否则计算一次
+    je push_a                           ;当前符号优先级大于栈顶符号，直接入栈
+    call cal_one_op                     ;否则计算一次
     jmp calculate_a
     push_a:
     inc si
@@ -432,6 +435,16 @@ handle_d proc
     cmp has_previous_bracket, 0
     je no_previous
     mov has_previous_bracket, 0
+
+    inc di
+    inc di
+    push ax
+    mov ax, current_num
+    mov operand_stack[di], ax          ;将current_num入栈
+    pop ax
+    mov led_count, 0
+    mov current_num, 0                    ;按下运算符时，数字输入结束，将当前的数字清空
+
     cal_between_bracket:
     cmp operator_stack[si], 0dh
     je is_left_bracket
@@ -453,6 +466,16 @@ handle_d endp
 
 handle_e proc
     push ax
+
+    inc di
+    inc di
+    push ax
+    mov ax, current_num
+    mov operand_stack[di], ax          ;将current_num入栈
+    pop ax
+    mov led_count, 0
+    mov current_num, 0                    ;按下运算符时，数字输入结束，将当前的数字清空
+
     cal_e:
     cmp whole_error, 1
     je ret_e
