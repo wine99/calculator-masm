@@ -58,7 +58,7 @@ start:
     same_as_pre             db 0
 
     operator_stack          db '#', 100 dup(?)      ; si
-    operand_stack           dw 0ffffh, 100 dup(?)   ; di
+    operand_stack           db 0ffh, 0ffh, 100 dup(?)   ; di
 
     priority                db 0    ; 0 栈顶<下一个; 1 =; 2 >
     is_save_num             db 0    ;当按下一个运算符时，current_num是否已经保存
@@ -394,11 +394,12 @@ handle_a proc
     jne calculate_a
     mov is_save_num, 1
     
-    inc di
     inc di                              ;TODO  di自增应该加二，但这里的di第一次执行是1
+    inc di                              ;也改成db，每次进出都操作两次，先放高位，再放低位(ah,al)
     push ax
     mov ax, current_num
-    mov operand_stack[di], ax           ;将current_num入栈
+    mov operand_stack[di], ah           ;将current_num入栈
+    mov operand_stack[di + 1], al
     
     pop ax
     mov led_count, 0
@@ -440,7 +441,8 @@ handle_d proc
     inc di
     push ax
     mov ax, current_num
-    mov operand_stack[di], ax          ;将current_num入栈
+    mov operand_stack[di], ah          ;将current_num入栈
+    mov operand_stack[di + 1], al
     pop ax
     mov led_count, 0
     mov current_num, 0                    ;按下运算符时，数字输入结束，将当前的数字清空
@@ -471,7 +473,8 @@ handle_e proc
     inc di
     push ax
     mov ax, current_num
-    mov operand_stack[di], ax          ;将current_num入栈
+    mov operand_stack[di], ah         ;将current_num入栈
+    mov operand_stack[di + 1], al
     pop ax
     mov led_count, 0
     mov current_num, 0                    ;按下运算符时，数字输入结束，将当前的数字清空
@@ -486,7 +489,8 @@ handle_e proc
     ret_e:
     cmp whole_error, 1
     je show_error
-    mov ax, operand_stack[di]
+    mov ah, operand_stack[di]
+    mov al, operand_stack[di + 1]
     mov display_num, ax
     call set_led_num
     show_error:
@@ -503,29 +507,33 @@ handle_f endp
 
 cal_one_op proc
         push ax
+        push bx
         push dx
         cmp si, 1
         jb cal_error
         cmp di, 4
         jb cal_error
-        mov ax, operand_stack[di - 2]
+        mov ah, operand_stack[di - 2]
+        mov al, operand_stack[di - 1]
+        mov bh, operand_stack[di]
+        mov bl, operand_stack[di + 1]
         mov dl, operator_stack[si]
 
         cmp dl, 0ah                 ; +
         jne cal_not_plus
-        add ax, operand_stack[di]
+        add ax, bx
         jo cal_overflow             ; 加法溢出为overflow
         jmp cal_ret
     cal_not_plus:
         cmp dl, 0bh                 ; -
         jne cal_not_minus
-        sub ax, operand_stack[di]
+        sub ax, bx
         js cal_overflow             ; 减法得负也为overflow
         jmp cal_ret
     cal_not_minus:
         cmp dl, 0ch                 ; *
         jne cal_error               ; 不是 + - * 为error
-        mul operand_stack[di]
+        mul bx
         cmp dx, 0
         jne cal_overflow            ; 乘法溢出为overflow
         jmp cal_ret
@@ -535,10 +543,13 @@ cal_one_op proc
     cal_overflow:
         mov led_overflow, 1
     cal_ret:
-        sub di, 2
+        dec di
+        dec di
         dec si
-        mov operand_stack[di], ax
+        mov operand_stack[di], ah
+        mov operand_stack[di + 1], al
         pop dx
+        pop bx
         pop ax
         ret
 cal_one_op endp
