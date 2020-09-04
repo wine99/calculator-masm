@@ -25,7 +25,10 @@
 code    segment
         assume cs:code
 
+org  1200h
+start:
 
+    jmp true_start
     ; 中断控制器 8259
     ; 8259只处理来自8253的计时中断
     port59_0    equ 0ffe4h
@@ -60,17 +63,18 @@ code    segment
     priority                db 0    ; 0 栈顶<下一个; 1 =; 2 >
     is_save_num             db 0    ;当按下一个运算符时，current_num是否已经保存
     current_num             dw 0
+    display_num             dw 13
     result                  dw 0
     led_overflow            db 0
     whole_error             db 0
     ;   # ( + - *
-    ; # f f f f f
-    ; ( f f f f f
+    ; # f 0 0 0 0
+    ; ( f f 0 0 0
     ; + 2 2 1 1 0
     ; - 2 2 1 1 0
     ; * 2 2 2 2 1
-    priority_table  db  0ffh, 0ffh, 0ffh, 0ffh, 0ffh
-                    db  0ffh, 0ffh, 0ffh, 0ffh, 0ffh
+    priority_table  db  0ffh, 0, 0, 0, 0
+                    db  0ffh, 0ffh, 0, 0, 0
                     db  2, 2, 1, 1, 0
                     db  2, 2, 1, 1, 0
                     db  2, 2, 2, 2, 1
@@ -80,20 +84,18 @@ code    segment
     OUTBIT  equ  0ffddh             ;位控制口/键扫口
     IN_KEY  equ  0ffdeh             ;键盘读入口
 
-
-org  1000h
-start:
+true_start:
     cli
     call init_all
 main:
     sti
-    ;call get_key
-    ;cmp current_key, 20h
-    ;je handle
-    ;and  al,0fh
-    ;handle:
-    ;call handle_key
-    call set_led_num
+    call get_key
+    cmp current_key, 20h
+    je handle
+    and  al,0fh
+    handle:
+    call handle_key
+    ; call set_led_num
     call disp
     jmp main
 ; end
@@ -343,7 +345,6 @@ return:
 is_same_as_pre endp
 
 
-    display_num             dw 13
 
 handle_number proc
     ; 如果 led_count < 4
@@ -370,6 +371,7 @@ handle_number proc
     mov ax, current_num
     mov display_num, ax
     pop ax
+    call set_led_num
     handle_number_ret:
     pop dx
     pop bx
@@ -520,27 +522,41 @@ cal_one_op endp
 
 
 get_priority proc
-    ; 栈顶是(或者#则为error，因为handle_key逻辑不会做出这样的行为
         push ax
         push bx
         push dx
         mov al, operator_stack[si]
-        mov dl, current_key
         cmp al, '#'
-        je get_priority_err
+        jne top_not_pound
+        mov al, 0
+        jmp curr_operator
+        top_not_pound:
         cmp al, 0dh
-        je get_priority_err
+        jne top_not_bracket
+        mov al, 1
+        jmp curr_operator
+        top_not_bracket:
         sub al, 0ah
         add al, 2
+
+        curr_operator:
+        cmp dl, 0dh
+        jne curr_operator_not_pound
+        mov dl, 1
+        jmp find_in_table
+        curr_operator_not_pound:
+        mov dl, current_key
         sub dl, 0ah
         add dl, 2
+
+        find_in_table:
         mov dh, 5           ; 5 x 5 的优先表
         mul dh
         add al, dl
         mov ah, 0
         ; dec ax            ; 不需要减1
         mov bx, ax
-        mov dl, priority_table[bx]
+        mov dl, priority_table[bx]  ;TODO
         mov priority, dl
         jmp get_priority_ret
     get_priority_err:
