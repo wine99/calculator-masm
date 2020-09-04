@@ -37,6 +37,8 @@ start:
     icw2        equ 08h         ; 中断类型号 08H 09H ...
     icw4        equ 09h         ; 全嵌套，非缓冲，非自动EOI，8086/88模式
     ocw1open    equ 07fh        ; IRQ7，类型号为0fh，向量地址偏移地址3ch，段地址0，参考示例第13行
+    vectorOffset EQU 20H        ; 中断向量的地址 08H*4=20H
+    vectorSeg   EQU 22H         ; 中断向量的CS段地址在中断向量表中的地址，值为0
 
     ; 并行接口芯片 8255
     ; 8255向led灯输出led状态
@@ -84,11 +86,16 @@ start:
     OUTBIT  equ  0ffddh             ;位控制口/键扫口
     IN_KEY  equ  0ffdeh             ;键盘读入口
 
+    LightOnGreen EQU 0edh ;绿灯  1110 1101   按照题目例子中给的接线方式接线
+    LightOnRed EQU 0feh ;红灯    1111 1110   
+    lightOff EQU 0FFH; 关灯      1111 1111
+    flag    db 0                ;灯是否在亮
+
+
 true_start:
     cli
     call init_all
 main:
-    sti
     call get_key
     cmp current_key, 20h
     je handle
@@ -106,6 +113,7 @@ init_all proc
         call init8259
         call init8255
         call init8253
+        call initVector
         call clean_all
         ret
 init_all endp
@@ -135,9 +143,9 @@ init8255 proc
         push ax
         push dx
         mov dx, port55_ctrl
-        mov al, 88H
+        mov al, 88H             ;8255A控制字88H，使AB端口均为输出口，C口高位输入，低位输出，且全部工作在方式0下
         out dx, al
-        ;mov al, lightOff    ; TODO
+        mov al, lightOff
         mov dx, port55_a
         out dx, al
         pop dx
@@ -165,9 +173,31 @@ init_stack proc
 init_stack endp
 
 
+initVector proc
+        cli
+        Push bx
+        Push ax
+
+        Mov ax , offset flash	;中断向量表的初始化
+        Mov bx , vectorOffset
+        Mov [bx] , ax
+
+        mov bx,vectorSeg		;中断向量的段地址对应的中断向量表的地址
+        mov ax,0000H
+        mov [bx],ax
+
+        Pop ax
+        Pop bx
+        sti
+        Ret
+initVector endp
+
+
 clean_all proc
+        cli
         call init_stack
         call clean_led
+        call ProcTurnOff
         mov previous_key, 20h
         mov current_key, 20h
         mov led_count, 0
@@ -191,6 +221,80 @@ clean_led proc
         mov  LedBuf+5,0ffh
         ret
 clean_led endp
+
+
+;---------------中断服务程序---------------------
+flash proc
+        cli	;关中断
+        test flag,1	;判断当前灯是否亮
+        Jz turnOn		;不亮则开灯
+        ;TurnOff
+        call ProcTurnOff	;亮灯则关上
+        Jmp flashOK
+    turnOn:
+        call ProcTurnOn
+
+    flashOK:
+        call ProcWriteCount;重新计数
+        mov dx,port59_0
+        mov al,20h	;0010 0000 普通EOI方式 OCW2
+        out dx,al
+        STI		;开中断
+        IRET
+flash endp
+
+
+ProcTurnOn proc
+        push dx
+        push ax
+
+        Mov dx, Port55_A
+        test result,1h		;判断是否是奇数
+        jz green		;是偶数则亮绿灯
+        mov al, LightOnRed
+        jmp rgOk
+    green:
+        mov al, LightOnGreen
+    rgOk:
+        Out dx, al
+        mov flag,1
+
+        pop ax
+        pop dx
+
+        ret
+ProcTurnOn endp
+
+ProcTurnOff proc
+        push dx
+        push ax
+		
+        Mov dx, Port55_A
+        Mov al, lightOff
+        Out dx, al
+        mov flag,0
+
+        pop ax
+        pop dx
+
+        ret
+ProcTurnOff endp
+
+
+ProcWriteCount proc
+        mov dx, port53_0  ;第一个计数器通道的端口地址
+        test result,1h       ;判断result是否为奇数
+        jz second2
+        mov ax,count53_second1	;如果是奇数，则写入计数初值1s
+        jmp countSetOK
+    second2:
+        mov ax,count53_second2
+    countSetOK:
+        out dx,al		;先写低8位，再读写高八位，方式0，二进制计数
+        mov al,ah
+        out dx,al
+        ret
+ProcWriteCount endp
 
 
 get_key proc                    ;键扫子程序
@@ -492,7 +596,11 @@ handle_e proc
     mov ah, operand_stack[di]
     mov al, operand_stack[di + 1]
     mov display_num, ax
+
     call set_led_num
+    sti
+    call ProcTurnOn
+    call ProcWriteCount
     show_error:
     ;TODO                                ;结果显示
     pop ax
@@ -500,7 +608,7 @@ handle_e proc
 handle_e endp
 
 handle_f proc
-    call init_all
+    call clean_all
     ret
 handle_f endp
 
