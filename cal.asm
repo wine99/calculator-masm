@@ -25,7 +25,6 @@
 code    segment
         assume cs:code
 
-org  1000h
 
     ; 中断控制器 8259
     ; 8259只处理来自8253的计时中断
@@ -61,11 +60,9 @@ org  1000h
     priority                db 0    ; 0 栈顶<下一个; 1 =; 2 >
     is_save_num             db 0    ;当按下一个运算符时，current_num是否已经保存
     current_num             dw 0
-    display_num             dw 0
     result                  dw 0
     led_overflow            db 0
-    error                   db 0
-
+    whole_error             db 0
     ;   # ( + - *
     ; # f f f f f
     ; ( f f f f f
@@ -78,17 +75,13 @@ org  1000h
                     db  2, 2, 1, 1, 0
                     db  2, 2, 2, 2, 1
 
+
     OUTSEG  equ  0ffdch             ;段控制口
     OUTBIT  equ  0ffddh             ;位控制口/键扫口
     IN_KEY  equ  0ffdeh             ;键盘读入口
-    ;八段管显示码
-    LedMap  db   0c0h,0f9h,0a4h,0b0h,099h,092h,082h,0f8h
-            db   080h,090h,088h,083h,0c6h,0a1h,086h,08eh
-    ;键码定义
-    KeyTable db   07h,04h,08h,05h,09h,06h,0ah,0bh
-            db   01h,00h,02h,0fh,03h,0eh,0ch,0dh
 
 
+org  1000h
 start:
     cli
     call init_all
@@ -182,7 +175,7 @@ clean_all proc
         mov result, 0
         mov led_overflow, 0
         mov is_save_num, 0
-        mov error, 0
+        mov whole_error, 0
         ret
 clean_all endp
 
@@ -350,6 +343,7 @@ return:
 is_same_as_pre endp
 
 
+    display_num             dw 13
 
 handle_number proc
     ; 如果 led_count < 4
@@ -405,7 +399,7 @@ handle_a proc
     mov led_count, 0
     mov current_num, 0                    ;按下运算符时，数字输入结束，将当前的数字清空
     calculate_a:
-    cmp error, 1
+    cmp whole_error, 1
     je a_ret                              ;当前面的式子已经计算出错的时候后面的式子不需要计算了
     call get_priority
     cmp priority, 0
@@ -458,14 +452,14 @@ handle_d endp
 handle_e proc
     push ax
     cal_e:
-    cmp error, 1
+    cmp whole_error, 1
     je ret_e
     cmp operator_stack[si], '#'
     je ret_e
     call cal_one_op
     jmp cal_e
     ret_e:
-    cmp error, 1
+    cmp whole_error, 1
     je show_error
     mov ax, operand_stack[di]
     mov display_num, ax
@@ -511,7 +505,7 @@ cal_one_op proc
         jne cal_overflow            ; 乘法溢出为overflow
         jmp cal_ret
     cal_error:
-        mov error, 1
+        mov whole_error, 1
         jmp cal_ret
     cal_overflow:
         mov led_overflow, 1
@@ -533,9 +527,9 @@ get_priority proc
         mov al, operator_stack[si]
         mov dl, current_key
         cmp al, '#'
-        je get_priority_error
+        je gete
         cmp al, 0dh
-        je get_priority_error
+        je gete
         sub al, 0ah
         add al, 2
         sub dl, 0ah
@@ -549,8 +543,8 @@ get_priority proc
         mov dl, priority_table[bx]
         mov priority, dl
         jmp get_priority_ret
-    get_priority_error:
-        mov error, 1
+    gete:
+        mov whole_error, 1
     get_priority_ret:
         pop dx
         pop bx
@@ -565,6 +559,7 @@ set_led_num proc
     ; led_count - 1 = 已显示的数字位数
         push ax
         push bx
+        push cx
         push dx
         push di
         mov  LedBuf+0,0ffh
@@ -572,22 +567,28 @@ set_led_num proc
         mov  LedBuf+2,0ffh
         mov  LedBuf+3,0ffh
         mov di, 3
-        mov ax, display_num
+        mov bx, offset display_num
+        mov ax, [bx]
+        ;mov ax, 0ch
     ax_not_zero:
+
+        mov bx, offset ledmap
         mov dx, 0
-        mov bx, 10
-        div bx
-        push bx
-        mov bx, dx
-        mov bl, ledmap[bx]
-        pop bx
-        mov ledbuf[di], bl
+        mov cx, 10
+        div cx
+        add bx, dx
+        mov dl, [bx]
+        mov bx, offset ledbuf
+        add bx, di
+        mov [bx], dl
         dec di
+        
         cmp ax, 0
         jne ax_not_zero
     set_led_num_ret:
         pop di
         pop dx
+        pop cx
         pop bx
         pop ax
         ret
@@ -634,6 +635,13 @@ delay proc                         ;延时子程序
         pop   cx
         ret
 delay endp
+
+    ;八段管显示码
+    LedMap  db   0c0h,0f9h,0a4h,0b0h,099h,092h,082h,0f8h
+            db   080h,090h,088h,083h,0c6h,0a1h,086h,08eh
+    ;键码定义
+    KeyTable db   07h,04h,08h,05h,09h,06h,0ah,0bh
+            db   01h,00h,02h,0fh,03h,0eh,0ch,0dh
 
 code    ends
         end start
