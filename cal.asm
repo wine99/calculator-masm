@@ -35,8 +35,8 @@ start:
     port59_1    equ 0ffe5h
     icw1        equ 13H         ; 边沿触发
     icw2        equ 08h         ; 中断类型号 08H 09H ...
-    icw4        equ 09h         ; 全嵌套，非缓冲，非自动EOI，8086/88模式
-    ocw1open    equ 07fh        ; IRQ7，类型号为0fh，向量地址偏移地址3ch，段地址0，参考示例第13行
+    icw4        equ 09h         ; 全嵌套，缓冲从片，非自动EOI，8086/88模式 为什么要用缓冲单片?
+    ocw1open    equ 0feh        ; IRQ0，类型号为08h
     vectorOffset EQU 20H        ; 中断向量的地址 08H*4=20H
     vectorSeg   EQU 22H         ; 中断向量的CS段地址在中断向量表中的地址，值为0
 
@@ -48,8 +48,8 @@ start:
     ; 计数定时芯片 8253
     port53_0    equ 0ffe0H
     port53_ctrl equ 0ffe3H      ; 控制口
-    count_1sec  equ 19200       ; 1s计数次数
-    count_2sec  equ 38400       ; 2s计数次数
+    count53_second1  equ 19200       ; 1s计数次数 T7=19.2KHz Tn=4.9152MHz/2^n
+    count53_second2  equ 38400       ; 2s计数次数
 
 
     ledbuf                  db 6 dup(?)
@@ -57,18 +57,22 @@ start:
     previous_key            db 20h
     current_key             db 20h
     has_previous_bracket    db 0
+    has_right_bracket       db 0
     same_as_pre             db 0
 
     operator_stack          db '#', 100 dup(?)      ; si
     operand_stack           db 0ffh, 0ffh, 100 dup(?)   ; di
 
     priority                db 0    ; 0 栈顶<下一个; 1 =; 2 >
-    is_save_num             db 0    ;当按下一个运算符时，current_num是否已经保存
+    is_save_num             db 0    ; 当按下一个运算符时，current_num是否已经保存，为了处理连输运算符号的错误情况
     current_num             dw 0
-    display_num             dw 13
-    result                  dw 0
-    led_overflow            db 0
+    display_num             dw 0    ; 按下符号后，会把current_num清零，但不把display_num清零
+    result                  dw 0    ; 总的计算结果
+    overflow                db 0
     whole_error             db 0
+    
+    ; # ( +- *    优先级从小到大
+
     ;   # ( + - *
     ; # f 0 0 0 0
     ; ( f f 0 0 0
@@ -158,7 +162,7 @@ init8253 proc
         push dx
         push ax
         mov dx, port53_ctrl
-        mov al, 30H            ; 计数器0，先低8位，再高8位，方式0，二进制计数
+        mov al, 36H            ; 计数器0，先低8位，再高8位，方式3，二进制计数
         out dx, al
         pop ax
         pop dx
@@ -202,10 +206,12 @@ clean_all proc
         mov current_key, 20h
         mov led_count, 0
         mov has_previous_bracket, 0
+        mov has_right_bracket, 0
         mov same_as_pre, 0
         mov current_num, 0
+        mov display_num, 0
         mov result, 0
-        mov led_overflow, 0
+        mov overflow, 0
         mov is_save_num, 0
         mov whole_error, 0
         ret
@@ -235,7 +241,7 @@ flash proc
         call ProcTurnOn
 
     flashOK:
-        call ProcWriteCount;重新计数
+        ; call ProcWriteCount;重新计数
         mov dx,port59_0
         mov al,20h	;0010 0000 普通EOI方式 OCW2
         out dx,al
@@ -290,7 +296,7 @@ ProcWriteCount proc
     second2:
         mov ax,count53_second2
     countSetOK:
-        out dx,al		;先写低8位，再读写高八位，方式0，二进制计数
+        out dx,al		;先写低8位，再读写高八位，方式3，二进制计数
         mov al,ah
         out dx,al
         ret
@@ -380,12 +386,12 @@ get_key endp
 handle_key proc
         push ax
         call is_same_as_pre
-        mov al, current_key
         cmp same_as_pre, 1
         jne handle_key_continue
         pop ax
         ret
     handle_key_continue:
+        mov al, current_key
         cmp al, 10
         jnb handle_key_a
         call handle_number
@@ -454,15 +460,13 @@ handle_number proc
     ; 如果 led_count < 4
     ;   current_num = current_num * 10 + current_key
     ;   led_count += 1
-    ; 否则
-    ;   call do_nothing
     ; 当输入数字以外的符号的时候需要把led_count清空
     push ax
     push bx
     push dx
-    mov is_save_num, 0           ;输入新的数字时，设置成当前数字还未保存
+    mov is_save_num, 0           ; 输入新的数字时，设置成当前数字还未保存
     cmp led_count, 4
-    jae handle_number_ret        ; TODO euqal
+    jae handle_number_ret
     mov ax, current_num
     mov bx, 10
     mul bx
@@ -487,25 +491,40 @@ handle_error proc
     ;处理get_key得到的字符不是数字和符号的情况，包含current_key=20h
     cmp current_key, 20h
     je handle_error_ret
-    ;TODO ;处理其它的符号
+    ;TODO 处理其它的符号
     handle_error_ret:
     ret
 handle_error endp
 
 handle_a proc
-    ;处理输入的是a(加号)的情况
+    ; 处理输入的是加减乘的情况
+
+    ; 如果数字已经保存或刚输入过右括号
+    ;   则不把数字压入栈
+    ; 否则，数字入栈
+
+    ; 然后计算
+
     cmp is_save_num, 0
     jne calculate_a
     mov is_save_num, 1
-    
-    inc di                              ;TODO  di自增应该加二，但这里的di第一次执行是1
-    inc di                              ;也改成db，每次进出都操作两次，先放高位，再放低位(ah,al)
+
+    ; 数字入栈
+    cmp has_right_bracket, 1
+    je number_not_push
+    inc di
+    inc di
     push ax
     mov ax, current_num
     mov operand_stack[di], ah           ;将current_num入栈
     mov operand_stack[di + 1], al
-    
     pop ax
+    jmp next_a
+    
+    number_not_push:
+    mov has_right_bracket, 0
+    
+    next_a:
     mov led_count, 0
     mov current_num, 0                  ;按下运算符时，数字输入结束，将当前的数字清空
     calculate_a:
@@ -537,74 +556,79 @@ handle_c proc
 handle_c endp
 
 handle_d proc
-    cmp has_previous_bracket, 0
-    je no_previous
-    mov has_previous_bracket, 0
+        cmp has_previous_bracket, 0
+        je no_previous
+        mov has_previous_bracket, 0
+        mov has_right_bracket, 1
 
-    inc di
-    inc di
-    push ax
-    mov ax, current_num
-    mov operand_stack[di], ah          ;将current_num入栈
-    mov operand_stack[di + 1], al
-    pop ax
-    mov led_count, 0
-    mov current_num, 0                    ;按下运算符时，数字输入结束，将当前的数字清空
+        inc di
+        inc di
+        push ax
+        mov ax, current_num
+        mov operand_stack[di], ah          ;将current_num入栈
+        mov operand_stack[di + 1], al
+        pop ax
+        mov led_count, 0
+        mov current_num, 0                    ;按下运算符时，数字输入结束，将当前的数字清空
 
     cal_between_bracket:
-    cmp operator_stack[si], 0dh
-    je is_left_bracket
-    call cal_one_op
-    jmp cal_between_bracket
+        cmp operator_stack[si], 0dh
+        je is_left_bracket
+        call cal_one_op
+        jmp cal_between_bracket
     is_left_bracket:
-    dec si
-    jmp ret_d
+        dec si
+        jmp ret_d
+
     no_previous:
-    mov has_previous_bracket, 1
-    inc si
-    push ax
-    mov al, current_key
-    mov operator_stack[si], al
-    pop ax
+        mov has_previous_bracket, 1
+        inc si
+        push ax
+        mov al, current_key
+        mov operator_stack[si], al
+        pop ax
     ret_d:
     ret
 handle_d endp
 
 handle_e proc
-    push ax
+        push ax
 
-    inc di
-    inc di
-    push ax
-    mov ax, current_num
-    mov operand_stack[di], ah         ;将current_num入栈
-    mov operand_stack[di + 1], al
-    pop ax
-    mov led_count, 0
-    mov current_num, 0                    ;按下运算符时，数字输入结束，将当前的数字清空
+        cmp has_right_bracket,1
+        je num_not_push_e
+        inc di
+        inc di
+        push ax
+        mov ax, current_num
+        mov operand_stack[di], ah         ;将current_num入栈
+        mov operand_stack[di + 1], al
+        pop ax
+    num_not_push_e:
+        mov has_right_bracket, 0
 
     cal_e:
-    cmp whole_error, 1
-    je ret_e
-    cmp operator_stack[si], '#'
-    je ret_e
-    call cal_one_op
-    jmp cal_e
+        cmp whole_error, 1
+        je ret_e
+        cmp operator_stack[si], '#'
+        je ret_e
+        call cal_one_op
+        jmp cal_e
     ret_e:
-    cmp whole_error, 1
-    je show_error
-    mov ah, operand_stack[di]
-    mov al, operand_stack[di + 1]
-    mov display_num, ax
+        cmp whole_error, 1
+        je show_error
+        mov ah, operand_stack[di]
+        mov al, operand_stack[di + 1]
+        mov display_num, ax
+        mov result, ax
 
-    call set_led_num
-    sti
-    call ProcTurnOn
-    call ProcWriteCount
+        call set_led_num
+        sti
+        call ProcTurnOn
+        call ProcWriteCount
     show_error:
-    ;TODO                                ;结果显示
-    pop ax
-    ret
+    ;TODO
+        pop ax
+        ret
 handle_e endp
 
 handle_f proc
@@ -630,26 +654,30 @@ cal_one_op proc
         cmp dl, 0ah                 ; +
         jne cal_not_plus
         add ax, bx
-        jo cal_overflow             ; 加法溢出为overflow
+        cmp ax,9999
+        ja cal_overflow
         jmp cal_ret
     cal_not_plus:
         cmp dl, 0bh                 ; -
         jne cal_not_minus
+        cmp ax,bx
+        jb cal_overflow         ; 减法得负也为overflow
         sub ax, bx
-        js cal_overflow             ; 减法得负也为overflow
         jmp cal_ret
     cal_not_minus:
         cmp dl, 0ch                 ; *
         jne cal_error               ; 不是 + - * 为error
         mul bx
         cmp dx, 0
-        jne cal_overflow            ; 乘法溢出为overflow
+        ja cal_overflow            ; 乘法溢出为overflow
+        cmp ax,9999
+        ja cal_overflow
         jmp cal_ret
     cal_error:
         mov whole_error, 1
         jmp cal_ret
     cal_overflow:
-        mov led_overflow, 1
+        mov overflow, 1
     cal_ret:
         dec di
         dec di
@@ -682,12 +710,12 @@ get_priority proc
         add al, 2
 
         curr_operator:
+        mov dl, current_key
         cmp dl, 0dh
         jne curr_operator_not_pound
         mov dl, 1
         jmp find_in_table
         curr_operator_not_pound:
-        mov dl, current_key
         sub dl, 0ah
         add dl, 2
 
@@ -696,9 +724,8 @@ get_priority proc
         mul dh
         add al, dl
         mov ah, 0
-        ; dec ax            ; 不需要减1
         mov bx, ax
-        mov dl, priority_table[bx]  ;TODO
+        mov dl, priority_table[bx]
         mov priority, dl
         jmp get_priority_ret
     get_priority_err:
@@ -725,24 +752,32 @@ set_led_num proc
         mov  LedBuf+2,0ffh
         mov  LedBuf+3,0ffh
         mov di, 3
-        mov bx, offset display_num
-        mov ax, [bx]
-        ;mov ax, 0ch
+        mov ax, display_num
+        
+        cmp overflow, 1
+        jne ax_not_zero
+        
+        overFshow:
+        mov LedBuf+3,08eh       ; 8eh : 'F'
+        JMP set_led_num_ret
+
     ax_not_zero:
 
         mov bx, offset ledmap
-        mov dx, 0
-        mov cx, 10
+        mov dx, 0               ; dx 为被除数的高位，需要置为0
+        mov cx, 10              ; cx 做除数
         div cx
-        add bx, dx
-        mov dl, [bx]
-        mov bx, offset ledbuf
+        add bx, dx              ; 除完后，dx为余数，ax为商，把余数加到ledmap的偏移地址上
+        mov dl, [bx]            ; bx为段码的地址，dl 就是要显示的段码
+
+        mov bx, offset ledbuf   
         add bx, di
-        mov [bx], dl
+        mov [bx], dl            ; 等价于 mov ledbuf+di, dl
         dec di
         
         cmp ax, 0
         jne ax_not_zero
+
     set_led_num_ret:
         pop di
         pop dx
