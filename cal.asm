@@ -67,6 +67,7 @@ start:
     is_save_num             db 0    ; 当按下一个运算符时，current_num是否已经保存，为了处理连输运算符号的错误情况
     current_num             dw 0
     display_num             dw 0    ; 按下符号后，会把current_num清零，但不把display_num清零
+    has_input_e             db 0    ; 统计是否已经按下过e键
     result                  dw 0    ; 总的计算结果
     overflow                db 0
     whole_error             db 0
@@ -97,18 +98,18 @@ start:
 
 
 true_start:
-    cli
-    call init_all
+        cli
+        call init_all
 main:
-    call get_key
-    cmp current_key, 20h
-    je handle
-    and  al,0fh
+        call get_key
+        cmp current_key, 20h
+        je handle
+        and  al,0fh
     handle:
-    call handle_key
-    ;call set_led_num
-    call disp
-    jmp main
+        call handle_key
+        ;call set_led_num
+        call disp
+        jmp main
 ; end
 
 
@@ -214,6 +215,7 @@ clean_all proc
         mov overflow, 0
         mov is_save_num, 0
         mov whole_error, 0
+        mov has_input_e, 0
         ret
 clean_all endp
 
@@ -441,17 +443,17 @@ handle_key endp
 
 is_same_as_pre proc
     ;给same_as_pre赋值
-    push ax
-    mov al, current_key
-    cmp al, previous_key
-    je is_same
-    mov same_as_pre, 0
-    jmp return
-is_same: 
-    mov same_as_pre, 1
-return:    
-    pop ax
-    ret
+        push ax
+        mov al, current_key
+        cmp al, previous_key
+        je is_same
+        mov same_as_pre, 0
+        jmp return
+    is_same: 
+        mov same_as_pre, 1
+    return:    
+        pop ax
+        ret
 is_same_as_pre endp
 
 
@@ -461,39 +463,39 @@ handle_number proc
     ;   current_num = current_num * 10 + current_key
     ;   led_count += 1
     ; 当输入数字以外的符号的时候需要把led_count清空
-    push ax
-    push bx
-    push dx
-    mov is_save_num, 0           ; 输入新的数字时，设置成当前数字还未保存
-    cmp led_count, 4
-    jae handle_number_ret
-    mov ax, current_num
-    mov bx, 10
-    mul bx
-    mov bl, current_key
-    mov bh, 0
-    add ax, bx               
-    mov current_num, ax          ;current_num = current_num * 10 + current_key
-    inc led_count
-    push ax
-    mov ax, current_num
-    mov display_num, ax
-    pop ax
-    call set_led_num
+        push ax
+        push bx
+        push dx
+        mov is_save_num, 0           ; 输入新的数字时，设置成当前数字还未保存
+        cmp led_count, 4
+        jae handle_number_ret
+        mov ax, current_num
+        mov bx, 10
+        mul bx
+        mov bl, current_key
+        mov bh, 0
+        add ax, bx               
+        mov current_num, ax          ;current_num = current_num * 10 + current_key
+        inc led_count
+        push ax
+        mov ax, current_num
+        mov display_num, ax
+        pop ax
+        call set_led_num
     handle_number_ret:
-    pop dx
-    pop bx
-    pop ax
-    ret
+        pop dx
+        pop bx
+        pop ax
+        ret
 handle_number endp
 
 handle_error proc
     ;处理get_key得到的字符不是数字和符号的情况，包含current_key=20h
-    cmp current_key, 20h
-    je handle_error_ret
-    ;TODO 处理其它的符号
+        cmp current_key, 20h
+        je handle_error_ret
+        ; 处理其它的符号
     handle_error_ret:
-    ret
+        ret
 handle_error endp
 
 handle_a proc
@@ -505,54 +507,54 @@ handle_a proc
 
     ; 然后计算
 
-    cmp is_save_num, 0
-    jne calculate_a
-    mov is_save_num, 1
+        cmp is_save_num, 0
+        jne calculate_a
+        mov is_save_num, 1
 
-    ; 数字入栈
-    cmp has_right_bracket, 1
-    je number_not_push
-    inc di
-    inc di
-    push ax
-    mov ax, current_num
-    mov operand_stack[di], ah           ;将current_num入栈
-    mov operand_stack[di + 1], al
-    pop ax
-    jmp next_a
+        ; 数字入栈
+        cmp has_right_bracket, 1
+        je number_not_push
+        inc di
+        inc di
+        push ax
+        mov ax, current_num
+        mov operand_stack[di], ah           ;将current_num入栈
+        mov operand_stack[di + 1], al
+        pop ax
+        jmp next_a
     
     number_not_push:
-    mov has_right_bracket, 0
+        mov has_right_bracket, 0
     
     next_a:
-    mov led_count, 0
-    mov current_num, 0                  ;按下运算符时，数字输入结束，将当前的数字清空
+        mov led_count, 0
+        mov current_num, 0                  ;按下运算符时，数字输入结束，将当前的数字清空
     calculate_a:
-    cmp whole_error, 1
-    je a_ret                            ;当前面的式子已经计算出错的时候后面的式子不需要计算了
-    call get_priority
-    cmp priority, 0
-    je push_a                           ;当前符号优先级大于栈顶符号，直接入栈
-    call cal_one_op                     ;否则计算一次
-    jmp calculate_a
+        cmp whole_error, 1
+        je a_ret                            ;当前面的式子已经计算出错的时候后面的式子不需要计算了
+        call get_priority
+        cmp priority, 0
+        je push_a                           ;当前符号优先级大于栈顶符号，直接入栈
+        call cal_one_op                     ;否则计算一次
+        jmp calculate_a
     push_a:
-    inc si
-    push ax
-    mov al, current_key
-    mov operator_stack[si], al          ;将当前运算符入栈
-    pop ax
+        inc si
+        push ax
+        mov al, current_key
+        mov operator_stack[si], al          ;将当前运算符入栈
+        pop ax
     a_ret:
-    ret
+        ret
 handle_a endp
 
 handle_b proc
-    call handle_a
-    ret
+        call handle_a
+        ret
 handle_b endp
 
 handle_c proc
-    call handle_a
-    ret
+        call handle_a
+        ret
 handle_c endp
 
 handle_d proc
@@ -588,11 +590,15 @@ handle_d proc
         mov operator_stack[si], al
         pop ax
     ret_d:
-    ret
+        ret
 handle_d endp
 
 handle_e proc
         push ax
+
+        cmp has_input_e, 0                ;为了解决按下第二次'e'键后显示第二个操作数的问题，判断已经输入过'e'后再次输入'e'时不进行任何操作
+        jne show_error
+        mov has_input_e, 1
 
         cmp has_right_bracket,1
         je num_not_push_e
@@ -626,14 +632,13 @@ handle_e proc
         call ProcTurnOn
         call ProcWriteCount
     show_error:
-    ;TODO
         pop ax
         ret
 handle_e endp
 
 handle_f proc
-    call clean_all
-    ret
+        call clean_all
+        ret
 handle_f endp
 
 
