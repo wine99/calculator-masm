@@ -558,6 +558,9 @@ handle_c proc
 handle_c endp
 
 handle_d proc
+        ;处理输入符号是括号的情况
+        ;输入是左括号，直接入栈
+        ;输入是右括号，反复计算直到栈顶是左括号
         cmp has_previous_bracket, 0
         je no_previous
         mov has_previous_bracket, 0
@@ -594,10 +597,12 @@ handle_d proc
 handle_d endp
 
 handle_e proc
+        ;处理输入符号是'='的情况
+        ;第一次按下'='时，反复计算直到栈顶是'#'号
         push ax
 
         cmp has_input_e, 0                ;为了解决按下第二次'e'键后显示第二个操作数的问题，判断已经输入过'e'后再次输入'e'时不进行任何操作
-        jne show_error
+        jne handle_e_ret
         mov has_input_e, 1
 
         cmp has_right_bracket,1
@@ -622,6 +627,8 @@ handle_e proc
     ret_e:
         cmp whole_error, 1
         je show_error
+        cmp di, 2
+        ja show_error                    ;计算完成后，运算符栈内剩余数字大于一个时计算结果错误
         mov ah, operand_stack[di]
         mov al, operand_stack[di + 1]
         mov display_num, ax
@@ -631,12 +638,19 @@ handle_e proc
         sti
         call ProcTurnOn
         call ProcWriteCount
+        jmp handle_e_ret
     show_error:
+        mov  LedBuf+0,0ffh               ;计算出现错误时结果显示'F'
+        mov  LedBuf+1,0ffh
+        mov  LedBuf+2,0ffh
+        mov  LedBuf+3,8eh
+    handle_e_ret:
         pop ax
         ret
 handle_e endp
 
 handle_f proc
+        ;处理按下'F'的情况
         call clean_all
         ret
 handle_f endp
@@ -744,7 +758,7 @@ get_priority endp
 
 
 set_led_num proc
-    ; 只在handle_number里面调用，
+    ; 在handle_number里调用时
     ; 此时led_count = 已输入的数字位数
     ; led_count - 1 = 已显示的数字位数
         push ax
